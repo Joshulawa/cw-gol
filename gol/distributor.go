@@ -42,8 +42,7 @@ func distributor(p Params, c distributorChannels) {
 	dy := p.ImageHeight / p.Threads
 
 	//List for channels used by workers.
-	var channels [16]chan [][]uint8 //CHANGE TO BE  A MAKE THING FOR CHANNELS AND THEN FOR LOOP ADD THE NUMBER YOU NEED
-	//channels := make([]chan [][]byte, 16) //What is the max number of threads?
+	var channels []chan [][]uint8
 
 	for i := 0; i < p.Threads; i++ {
 		channels[i] = make(chan [][]uint8)
@@ -54,20 +53,21 @@ func distributor(p Params, c distributorChannels) {
 	go tickTock(p, c) //Start the ticker.
 	go keyInput(c)
 	//May need a TurnComplete event here as that event renders the world which i just generated.
-	c.events <- TurnComplete{turn}
+	//c.events <- TurnComplete{turn}
 
 	for i := 0; i < p.Turns; i++ {
-		for i := 0; i < p.Threads; i++ {
-			go calculateNextState(dy*i, dy*(i+1), p, world, c, turn)
+		for j := 0; j < p.Threads; j++ {
+			go calculateNextState(dy*j, dy*(j+1), p, world, c, turn)
 		}
 
-		for i := 0; i < p.Threads; i++ {
-			world = append(world, <-channels[i]...)
+		for j := 0; j < p.Threads; j++ {
+			world = append(world, <-channels[j]...)
 		}
 		//world = calculateNextState(p, world, c, turn)
 		c.events <- TurnComplete{turn}
 		turn++
 	}
+
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 	c.events <- FinalTurnComplete{
 		CompletedTurns: turn,
