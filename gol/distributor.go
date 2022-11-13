@@ -1,7 +1,9 @@
 package gol
 
 import (
+	"fmt"
 	"strconv"
+	"time"
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
@@ -12,9 +14,11 @@ type distributorChannels struct {
 	ioFilename chan<- string
 	ioOutput   chan<- uint8
 	ioInput    <-chan uint8
+	keyPresses <-chan rune
 }
 
 var turn = 0
+var world [][]byte
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
@@ -33,12 +37,11 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
-	//fmt.Println(world)
-
 	//turn := 0
 
 	dy := p.ImageHeight / p.Threads
 
+	//List for channels used by workers.
 	var channels [16]chan [][]uint8 //CHANGE TO BE  A MAKE THING FOR CHANNELS AND THEN FOR LOOP ADD THE NUMBER YOU NEED
 	//channels := make([]chan [][]byte, 16) //What is the max number of threads?
 
@@ -47,6 +50,12 @@ func distributor(p Params, c distributorChannels) {
 	}
 
 	// TODO: Execute all turns of the Game of Life.
+	fmt.Println("hi")
+	go tickTock(p, c) //Start the ticker.
+	go keyInput(c)
+	//May need a TurnComplete event here as that event renders the world which i just generated.
+	c.events <- TurnComplete{turn}
+
 	for i := 0; i < p.Turns; i++ {
 		for i := 0; i < p.Threads; i++ {
 			go calculateNextState(dy*i, dy*(i+1), p, world, c, turn)
@@ -64,7 +73,7 @@ func distributor(p Params, c distributorChannels) {
 		CompletedTurns: turn,
 		Alive:          calculateAliveCells(p, world),
 	}
-
+	c.ioCommand <- ioOutput
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
@@ -75,21 +84,42 @@ func distributor(p Params, c distributorChannels) {
 	close(c.events)
 }
 
-//func tickTock(p Params, world [][]byte, c distributorChannels) {
-//	time.Sleep(2 * time.Second)
-//	alive := 0
-//	for i := 0; i < p.ImageHeight; i++ {
-//		for j := 0; j < p.ImageWidth; j++ {
-//			if world[i][j] == 0xFF {
-//				alive++
-//			}
-//		}
-//	}
-//	c.events <- AliveCellsCount{
-//		CompletedTurns: turn,
-//		CellsCount:     alive,
-//	}
-//}
+func keyInput(c distributorChannels) {
+	for {
+		key := <-c.keyPresses
+		if key == 's' {
+			c.ioCommand <- ioOutput
+		}
+	}
+}
+
+func tickTock(p Params, c distributorChannels) {
+	for {
+		time.Sleep(2 * time.Second)
+		alive := 0
+		world := getWorld()
+		for i := 0; i < p.ImageHeight; i++ {
+			for j := 0; j < p.ImageWidth; j++ {
+				if world[i][j] == 0xFF {
+					alive++
+				}
+			}
+		}
+		c.events <- AliveCellsCount{
+			CompletedTurns: turn,
+			CellsCount:     alive,
+		}
+	}
+
+}
+
+func postWorld(newWorld [][]byte) {
+	world = newWorld
+}
+
+func getWorld() [][]byte {
+	return world
+}
 
 func calculateNextState(start int, end int, p Params, world [][]byte, c distributorChannels, turn int) [][]byte {
 	newWorld := createBlankState(p)
@@ -127,6 +157,7 @@ func calculateNextState(start int, end int, p Params, world [][]byte, c distribu
 			}
 		}
 	}
+	postWorld(newWorld)
 	return newWorld
 }
 
