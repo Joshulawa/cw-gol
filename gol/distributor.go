@@ -78,11 +78,6 @@ func distributor(p Params, c distributorChannels) {
 		}
 		world = newWorld
 		c.events <- TurnComplete{turn}
-		// TODO: output image at 0, 1, 100 turns.
-		if turn == 0 || turn == 1 {
-			//fmt.Println("WASSUP BEIJING")
-			go imageOutput(p, c, world, turn)
-		}
 		turn++
 	}
 
@@ -93,8 +88,7 @@ func distributor(p Params, c distributorChannels) {
 		Alive:          calculateAliveCells(p, world),
 	}
 
-	//Filename for output needs
-	go imageOutput(p, c, world, turn)
+	imageOutput(p, c, world, p.Turns)
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
@@ -115,8 +109,6 @@ func imageOutput(p Params, c distributorChannels, world [][]byte, turn int) {
 			c.ioOutput <- world[row][col]
 		}
 	}
-	c.ioCommand <- ioCheckIdle
-	<-c.ioIdle
 }
 
 func calculateNextState(start int, end int, p Params, world [][]byte, c distributorChannels, turn int, channel chan [][]byte) {
