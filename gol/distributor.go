@@ -1,9 +1,9 @@
 package gol
 
 import (
-	"fmt"
 	"strconv"
 	"time"
+
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
@@ -18,18 +18,22 @@ type distributorChannels struct {
 }
 
 var turn = 0
-var world [][]byte
+
+//var world [][]byte //Is it a good idea to make this global?
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
 
 	// TODO: Create a 2D slice to store the world.
-	c.ioFilename <- strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.ImageWidth)
-	c.ioCommand <- ioInput //This should tell io.go to run readpgm()
+	filename := strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.ImageWidth)
+	c.ioFilename <- filename
+	c.ioCommand <- ioInput
+
 	world := make([][]byte, p.ImageHeight)
 	for i := 0; i < p.ImageHeight; i++ {
 		world[i] = make([]byte, p.ImageWidth)
 	}
+
 	//Creating and filling the empty world with data
 	for row := 0; row < p.ImageHeight; row++ {
 		for col := 0; col < p.ImageWidth; col++ {
@@ -37,92 +41,90 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
-	//turn := 0
-
 	dy := p.ImageHeight / p.Threads
 
 	//List for channels used by workers.
-	var channels [16]chan [][]uint8 //CHANGE TO BE  A MAKE THING FOR CHANNELS AND THEN FOR LOOP ADD THE NUMBER YOU NEED
-	//channels := make([]chan [][]byte, 16) //What is the max number of threads?
+	var channels [32]chan [][]uint8 //CHANGE TO BE  A MAKE THING FOR CHANNELS AND THEN FOR LOOP ADD THE NUMBER YOU NEED
+	//What is the max number of threads?
 
 	for i := 0; i < p.Threads; i++ {
 		channels[i] = make(chan [][]uint8)
 	}
 
+	turn := 0
+
 	// TODO: Execute all turns of the Game of Life.
-	fmt.Println("hi")
-	go tickTock(p, c) //Start the ticker.
-	go keyInput(c)
-	//May need a TurnComplete event here as that event renders the world which i just generated.
-	c.events <- TurnComplete{turn}
-
+	worldChannel := make(chan [][]byte)
+	go tickTock(worldChannel, p, c) //Start the ticker.
+	//	go keyInput(c)
 	for i := 0; i < p.Turns; i++ {
-		for i := 0; i < p.Threads; i++ {
-			go calculateNextState(dy*i, dy*(i+1), p, world, c, turn)
+		//Non blocking send.
+		//When should I send world down the worldChannel , beggining or end?
+		select {
+		case worldChannel <- world:
+		default:
 		}
+		for j := 0; j < p.Threads; j++ {
+			if j == p.Threads-1 {
+				go calculateNextState(dy*j, p.ImageHeight, p, world, c, turn, channels[j])
+			} else {
+				go calculateNextState(dy*j, dy*(j+1), p, world, c, turn, channels[j])
+			}
+		}
+		var newWorld [][]byte
+		for j := 0; j < p.Threads; j++ {
 
-		for i := 0; i < p.Threads; i++ {
-			world = append(world, <-channels[i]...)
+			newWorld = append(newWorld, <-channels[j]...)
 		}
-		//world = calculateNextState(p, world, c, turn)
+		world = newWorld
 		c.events <- TurnComplete{turn}
+		// TODO: output image at 0, 1, 100 turns.
+		if turn == 0 || turn == 1 {
+			//fmt.Println("WASSUP BEIJING")
+			go imageOutput(p, c, world, turn)
+		}
 		turn++
 	}
+
 	// TODO: Report the final state using FinalTurnCompleteEvent.
+
 	c.events <- FinalTurnComplete{
 		CompletedTurns: turn,
 		Alive:          calculateAliveCells(p, world),
 	}
-	c.ioCommand <- ioOutput
+
+	//Filename for output needs
+	go imageOutput(p, c, world, turn)
+
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
-
 	c.events <- StateChange{turn, Quitting}
 
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	close(c.events)
 }
 
-func keyInput(c distributorChannels) {
-	for {
-		key := <-c.keyPresses
-		if key == 's' {
-			c.ioCommand <- ioOutput
+func imageOutput(p Params, c distributorChannels, world [][]byte, turn int) {
+
+	c.ioFilename <- strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(turn)
+	c.ioCommand <- ioOutput
+
+	for row := 0; row < p.ImageHeight; row++ {
+		for col := 0; col < p.ImageWidth; col++ {
+			c.ioOutput <- world[row][col]
 		}
 	}
+	c.ioCommand <- ioCheckIdle
+	<-c.ioIdle
 }
 
-func tickTock(p Params, c distributorChannels) {
-	for {
-		time.Sleep(2 * time.Second)
-		alive := 0
-		world := getWorld()
-		for i := 0; i < p.ImageHeight; i++ {
-			for j := 0; j < p.ImageWidth; j++ {
-				if world[i][j] == 0xFF {
-					alive++
-				}
-			}
-		}
-		c.events <- AliveCellsCount{
-			CompletedTurns: turn,
-			CellsCount:     alive,
-		}
+func calculateNextState(start int, end int, p Params, world [][]byte, c distributorChannels, turn int, channel chan [][]byte) {
+	newWorld := createBlankState(p) //Giving this blank world as a param would make the function more efficient.
+	result := make([][]byte, end-start)
+	for i := 0; i < end-start; i++ {
+		result[i] = make([]byte, p.ImageWidth)
 	}
-
-}
-
-func postWorld(newWorld [][]byte) {
-	world = newWorld
-}
-
-func getWorld() [][]byte {
-	return world
-}
-
-func calculateNextState(start int, end int, p Params, world [][]byte, c distributorChannels, turn int) [][]byte {
-	newWorld := createBlankState(p)
 	for i := start; i < end; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
 			aliveNeighbours := 0
@@ -155,10 +157,12 @@ func calculateNextState(start int, end int, p Params, world [][]byte, c distribu
 					Cell:           util.Cell{X: j, Y: i},
 				}
 			}
+			result[i-start][j] = newWorld[i][j]
 		}
 	}
-	postWorld(newWorld)
-	return newWorld
+	//postWorld(newWorld)
+	//fmt.Println("yo  ", result)
+	channel <- result //NEED TO ONLY RETURN THE RIGHT PARTS
 }
 
 func createBlankState(p Params) [][]byte {
@@ -180,3 +184,40 @@ func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	}
 	return alive
 }
+
+func keyInput(c distributorChannels) {
+	for {
+		key := <-c.keyPresses
+		if key == 's' {
+			c.ioCommand <- ioOutput
+		}
+	}
+}
+
+func tickTock(input chan [][]byte, p Params, c distributorChannels) {
+	for {
+		time.Sleep(2 * time.Second)
+		alive := 0
+		world := <-input
+		for i := 0; i < p.ImageHeight; i++ {
+			for j := 0; j < p.ImageWidth; j++ {
+				if world[i][j] == 0xFF {
+					alive++
+				}
+			}
+		}
+		c.events <- AliveCellsCount{
+			CompletedTurns: turn,
+			CellsCount:     alive,
+		}
+	}
+
+}
+
+// func postWorld(newWorld [][]byte) {
+// 	world = newWorld
+// }
+
+// func getWorld() [][]byte {
+// 	return world
+// }
