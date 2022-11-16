@@ -1,6 +1,7 @@
 package gol
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -17,10 +18,6 @@ type distributorChannels struct {
 	keyPresses <-chan rune
 }
 
-var turn = 0
-
-//var world [][]byte //Is it a good idea to make this global?
-
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
 
@@ -35,9 +32,11 @@ func distributor(p Params, c distributorChannels) {
 	}
 
 	//Creating and filling the empty world with data
+	blankWorld := createBlankState(p)
 	for row := 0; row < p.ImageHeight; row++ {
 		for col := 0; col < p.ImageWidth; col++ {
 			world[row][col] = <-c.ioInput
+			calcCellFlipped(c, p, world, blankWorld, 0, row, col) //Shouldnt call this each time really
 		}
 	}
 
@@ -55,30 +54,49 @@ func distributor(p Params, c distributorChannels) {
 
 	// TODO: Execute all turns of the Game of Life.
 	worldChannel := make(chan [][]byte)
-	go tickTock(worldChannel, p, c) //Start the ticker.
-	//	go keyInput(c)
-	for i := 0; i < p.Turns; i++ {
-		//Non blocking send.
-		//When should I send world down the worldChannel , beggining or end?
-		select {
-		case worldChannel <- world:
-		default:
-		}
-		for j := 0; j < p.Threads; j++ {
-			if j == p.Threads-1 {
-				go calculateNextState(dy*j, p.ImageHeight, p, world, c, turn, channels[j])
-			} else {
-				go calculateNextState(dy*j, dy*(j+1), p, world, c, turn, channels[j])
-			}
-		}
-		var newWorld [][]byte
-		for j := 0; j < p.Threads; j++ {
+	turnChannel := make(chan int)
+	worldChannel2 := make(chan [][]byte)
+	turnChannel2 := make(chan int)
+	quit := make(chan bool)
+	pause := make(chan bool)
 
-			newWorld = append(newWorld, <-channels[j]...)
+	go tickTock(worldChannel, turnChannel, p, c) //Start the ticker.
+	go keyInput(p, c, worldChannel2, turnChannel2, quit, pause)
+
+	for i := 0; i < p.Turns; i++ {
+		select {
+		case <-quit:
+			fmt.Println("wassup")
+			i = p.Turns //This
+		case <-pause:
+			<-pause //This should block until pause is pressed again
+		default:
+			//Non blocking send.
+			//When should I send world down the worldChannel , beggining or end?
+			select {
+			case worldChannel <- world:
+				worldChannel2 <- world
+				turnChannel <- turn
+				turnChannel2 <- turn
+			default:
+			}
+			for j := 0; j < p.Threads; j++ {
+				if j == p.Threads-1 {
+					go calculateNextState(dy*j, p.ImageHeight, p, world, c, turn, channels[j])
+				} else {
+					go calculateNextState(dy*j, dy*(j+1), p, world, c, turn, channels[j])
+				}
+			}
+			var newWorld [][]byte
+			for j := 0; j < p.Threads; j++ {
+
+				newWorld = append(newWorld, <-channels[j]...)
+			}
+			world = newWorld
+			c.events <- TurnComplete{turn}
+			turn++
 		}
-		world = newWorld
-		c.events <- TurnComplete{turn}
-		turn++
+
 	}
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
@@ -88,7 +106,7 @@ func distributor(p Params, c distributorChannels) {
 		Alive:          calculateAliveCells(p, world),
 	}
 
-	imageOutput(p, c, world, p.Turns)
+	imageOutput(p, c, world, turn)
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
@@ -143,12 +161,8 @@ func calculateNextState(start int, end int, p Params, world [][]byte, c distribu
 				newWorld[i][j] = world[i][j]
 			}
 
-			if newWorld[i][j] != world[i][j] {
-				c.events <- CellFlipped{
-					CompletedTurns: turn,
-					Cell:           util.Cell{X: j, Y: i},
-				}
-			}
+			calcCellFlipped(c, p, world, newWorld, turn, i, j)
+
 			result[i-start][j] = newWorld[i][j]
 		}
 	}
@@ -165,6 +179,15 @@ func createBlankState(p Params) [][]byte {
 	return blankWorld
 }
 
+func calcCellFlipped(c distributorChannels, p Params, world [][]byte, newWorld [][]byte, turn int, i int, j int) {
+	if newWorld[i][j] != world[i][j] {
+		c.events <- CellFlipped{
+			CompletedTurns: turn,
+			Cell:           util.Cell{X: j, Y: i},
+		}
+	}
+}
+
 func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	var alive []util.Cell
 	for i := 0; i < p.ImageHeight; i++ {
@@ -177,20 +200,36 @@ func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	return alive
 }
 
-func keyInput(c distributorChannels) {
+func keyInput(p Params, c distributorChannels, worldChannel chan [][]byte, turnChannel chan int, quit chan bool, pause chan bool) {
+
+	world := <-worldChannel
+	turn := <-turnChannel
+
 	for {
-		key := <-c.keyPresses
-		if key == 's' {
-			c.ioCommand <- ioOutput
+		select {
+		case world = <-worldChannel:
+			turn = <-turnChannel
+		case key := <-c.keyPresses:
+			if key == 's' {
+				fmt.Println("s pressed")
+				imageOutput(p, c, world, turn)
+			} else if key == 'q' {
+				fmt.Println("q pressed")
+				quit <- true
+			} else if key == 'p' {
+				pause <- true
+			}
 		}
+
 	}
 }
 
-func tickTock(input chan [][]byte, p Params, c distributorChannels) {
+func tickTock(worldChannel chan [][]byte, turnChannel chan int, p Params, c distributorChannels) {
 	for {
 		time.Sleep(2 * time.Second)
 		alive := 0
-		world := <-input
+		world := <-worldChannel
+		turn := <-turnChannel
 		for i := 0; i < p.ImageHeight; i++ {
 			for j := 0; j < p.ImageWidth; j++ {
 				if world[i][j] == 0xFF {
@@ -205,11 +244,3 @@ func tickTock(input chan [][]byte, p Params, c distributorChannels) {
 	}
 
 }
-
-// func postWorld(newWorld [][]byte) {
-// 	world = newWorld
-// }
-
-// func getWorld() [][]byte {
-// 	return world
-// }
