@@ -1,14 +1,21 @@
-package server
+package main
 
 import (
 	"flag"
 	"net"
 	"net/rpc"
-
-	"uk.ac.bris.cs/gameoflife/gol"
+	//"uk.ac.bris.cs/gameoflife/gol"
+	"uk.ac.bris.cs/gameoflife/stubs"
 )
 
-func createBlankState(p gol.Params) [][]byte {
+//type Params struct {
+//	Turns       int
+//	Threads     int
+//	ImageWidth  int
+//	ImageHeight int
+//}
+
+func createBlankState(p stubs.Params) [][]byte {
 	blankWorld := make([][]byte, p.ImageHeight)
 	for i := range blankWorld {
 		blankWorld[i] = make([]byte, p.ImageWidth)
@@ -16,29 +23,15 @@ func createBlankState(p gol.Params) [][]byte {
 	return blankWorld
 }
 
-var CalculateNextState = "golLogicOperations.CalculateNextState"
-
-type Response struct {
-	Result [][]byte
-}
-
-type Request struct {
-	P     gol.Params
-	Start int
-	End   int
-	World [][]byte
-	Turn  int
-}
-
 type GolLogicOperations struct{}
 
-func (g *GolLogicOperations) CalculateNextState(req Request, res *Response) (err error) {
+func (g *GolLogicOperations) CalculateNextState(req stubs.Request, res *stubs.Response) (err error) {
 	p := req.P
 	end := req.End
 	start := req.Start
 	world := req.World
 
-	newWorld := createBlankState(p) //Giving this blank world as a param would make the function more efficient.
+	newWorld := createBlankState(req.P) //Giving this blank world as a param would make the function more efficient.
 	result := make([][]byte, end-start)
 	for i := 0; i < end-start; i++ {
 		result[i] = make([]byte, p.ImageWidth)

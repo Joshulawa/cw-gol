@@ -6,8 +6,8 @@ import (
 	"net/rpc"
 	"strconv"
 	"time"
+	"uk.ac.bris.cs/gameoflife/stubs"
 
-	"uk.ac.bris.cs/gameoflife/server"
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
@@ -20,6 +20,8 @@ type distributorChannels struct {
 	ioInput    <-chan uint8
 	keyPresses <-chan rune
 }
+
+var server = flag.String("server", "localhost:8030", "IP:port string to connect to as server")
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
@@ -53,7 +55,7 @@ func distributor(p Params, c distributorChannels) {
 	// 	client, _ := rpc.Dial("tcp", *server)
 	// 	clients[i] = client //SHOULD I HAVE POINTER HERE?
 	// }
-	server := flag.String("server", "127.0.0.1:8030", "IP:port string to connect to as server")
+
 	client, _ := rpc.Dial("tcp", *server)
 	turn := 0
 	var result [][]byte
@@ -97,9 +99,9 @@ func distributor(p Params, c distributorChannels) {
 }
 
 func nextStateCall(client *rpc.Client, p Params, start int, end int, world [][]byte, turn int) [][]byte {
-	request := server.Request{P: p, Start: start, End: end, World: world, Turn: turn}
-	response := new(server.Response)
-	client.Call(server.CalculateNextState, request, response)
+	request := stubs.Request{P: stubs.Params(p), Start: start, End: end, World: world, Turn: turn}
+	response := new(stubs.Response)
+	client.Call(stubs.CalculateNextState, request, response)
 	return response.Result
 }
 
