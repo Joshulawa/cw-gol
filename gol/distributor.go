@@ -1,10 +1,13 @@
 package gol
 
 import (
+	"flag"
 	"fmt"
+	"net/rpc"
 	"strconv"
 	"time"
 
+	"uk.ac.bris.cs/gameoflife/server"
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
@@ -42,61 +45,37 @@ func distributor(p Params, c distributorChannels) {
 
 	dy := p.ImageHeight / p.Threads
 
-	//List for channels used by workers.
-	var channels [32]chan [][]uint8 //CHANGE TO BE  A MAKE THING FOR CHANNELS AND THEN FOR LOOP ADD THE NUMBER YOU NEED
-	//What is the max number of threads?
-
-	for i := 0; i < p.Threads; i++ {
-		channels[i] = make(chan [][]uint8)
-	}
-
+	//CODE COMMENTED FOR LATER USE.
+	// var clients [32] *rpc.Client
+	// for i := 0; i < p.Threads; i++ {
+	// 	//Need to change ip probably.
+	// 	server := flag.String("server","127.0.0.1:8030","IP:port string to connect to as server")
+	// 	client, _ := rpc.Dial("tcp", *server)
+	// 	clients[i] = client //SHOULD I HAVE POINTER HERE?
+	// }
+	server := flag.String("server", "127.0.0.1:8030", "IP:port string to connect to as server")
+	client, _ := rpc.Dial("tcp", *server)
 	turn := 0
+	var result [][]byte
 
-	// TODO: Execute all turns of the Game of Life.
-	worldChannel := make(chan [][]byte)
-	turnChannel := make(chan int)
-	worldChannel2 := make(chan [][]byte)
-	turnChannel2 := make(chan int)
-	quit := make(chan bool)
-	pause := make(chan bool)
-
-	go tickTock(worldChannel, turnChannel, p, c) //Start the ticker.
-	go keyInput(p, c, worldChannel2, turnChannel2, quit, pause)
+	//Execute games of life.
 
 	for i := 0; i < p.Turns; i++ {
-		select {
-		case <-quit:
-			fmt.Println("wassup")
-			i = p.Turns //This
-		case <-pause:
-			<-pause //This should block until pause is pressed again
-		default:
-			//Non blocking send.
-			//When should I send world down the worldChannel , beggining or end?
-			select {
-			case worldChannel <- world:
-				worldChannel2 <- world
-				turnChannel <- turn
-				turnChannel2 <- turn
-			default:
+		for j := 0; j < p.Threads; j++ {
+			if j == p.Threads-1 {
+				//newWorld will need to be a list when we have multiple threads returning.
+				result = nextStateCall(client, p, dy*j, p.ImageHeight, world, turn)
+			} else { //For now just doing single threaded.
+				//nextStateCall(client, p, dy*j, p.ImageHeight, world, turn)
 			}
-			for j := 0; j < p.Threads; j++ {
-				if j == p.Threads-1 {
-					go calculateNextState(dy*j, p.ImageHeight, p, world, c, turn, channels[j])
-				} else {
-					go calculateNextState(dy*j, dy*(j+1), p, world, c, turn, channels[j])
-				}
-			}
-			var newWorld [][]byte
-			for j := 0; j < p.Threads; j++ {
-
-				newWorld = append(newWorld, <-channels[j]...)
-			}
-			world = newWorld
-			c.events <- TurnComplete{turn}
-			turn++
 		}
-
+		var newWorld [][]byte
+		for j := 0; j < p.Threads; j++ {
+			newWorld = append(newWorld, result...)
+		}
+		world = newWorld
+		c.events <- TurnComplete{turn}
+		turn++
 	}
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
@@ -115,6 +94,13 @@ func distributor(p Params, c distributorChannels) {
 
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	close(c.events)
+}
+
+func nextStateCall(client *rpc.Client, p Params, start int, end int, world [][]byte, turn int) [][]byte {
+	request := server.Request{P: p, Start: start, End: end, World: world, Turn: turn}
+	response := new(server.Response)
+	client.Call(server.CalculateNextState, request, response)
+	return response.Result
 }
 
 func imageOutput(p Params, c distributorChannels, world [][]byte, turn int) {
