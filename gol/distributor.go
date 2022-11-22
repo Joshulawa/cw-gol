@@ -21,6 +21,7 @@ type distributorChannels struct {
 }
 
 var server = "127.0.0.1:8030" //flag.String("server", "localhost:8030", "IP:port string to connect to as server")
+var exit = false
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
@@ -47,29 +48,22 @@ func distributor(p Params, c distributorChannels) {
 	//dy := p.ImageHeight / p.Threads
 
 	client, _ := rpc.Dial("tcp", "127.0.0.1:8030")
-	turn := 0
 	request := stubs.GOLRequest{P: stubs.Params(p), Start: 0, End: p.ImageHeight, World: world}
 	response := new(stubs.GOLResponse)
 	//RPC call to calculate game of life.
-	ticker := time.NewTicker(2 * time.Second)
-	go tickTock(client, c)
-	a := client.Go(stubs.CalculateGOL, request, response, nil)
-label:
-	for {
-		select {
-		case <-ticker.C:
-			tickTock(client, c)
-		case <-a.Done:
-			break label
-		}
+	go tickTock(p, client, c)
+	err := client.Call(stubs.CalculateGOL, request, response)
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
-
+	fmt.Println("hi")
 	world = response.Result
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 
 	c.events <- FinalTurnComplete{
-		CompletedTurns: turn,
+		CompletedTurns: p.Turns, //THINK ABOUT THESE TURNS.
 		Alive:          calculateAliveCells(p, world),
 	}
 
@@ -78,9 +72,10 @@ label:
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
-	c.events <- StateChange{turn, Quitting}
+	c.events <- StateChange{p.Turns, Quitting}
 
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
+	exit = true
 	close(c.events)
 }
 
@@ -92,17 +87,33 @@ func createBlankState(p Params) [][]byte {
 	return blankWorld
 }
 
-func tickTock(client *rpc.Client, c distributorChannels) {
-	request := stubs.NilRequest{}
-	response := new(stubs.AliveCellResponse)
-	client.Call(stubs.CalculateAliveCells, request, response)
-	c.events <- AliveCellsCount{
-		CompletedTurns: response.Turn,
-		CellsCount:     response.Alive,
-	}
-}
+//
+func tickTock(p Params, client *rpc.Client, c distributorChannels) {
+	ticker := time.NewTicker(2 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			time.Sleep(time.Second * 2)
+			request := stubs.NilRequest{}
+			response := new(stubs.AliveCellResponse)
+			err := client.Call(stubs.CalculateAliveCells, request, response)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			alive := len(calculateAliveCells(p, response.World))
+			if exit != true {
+				c.events <- AliveCellsCount{
+					CompletedTurns: response.Turn,
+					CellsCount:     alive,
+				}
+			}
 
-//-------------------------------------------------------------------------//
+		}
+
+	}
+
+}
 
 func imageOutput(p Params, c distributorChannels, world [][]byte, turn int) {
 
@@ -115,6 +126,8 @@ func imageOutput(p Params, c distributorChannels, world [][]byte, turn int) {
 		}
 	}
 }
+
+//-------------------------------------------------------------------------//
 
 func calcCellFlipped(c distributorChannels, p Params, world [][]byte, newWorld [][]byte, turn int, i int, j int) {
 	if newWorld[i][j] != world[i][j] {
