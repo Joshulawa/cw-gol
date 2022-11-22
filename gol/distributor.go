@@ -1,7 +1,6 @@
 package gol
 
 import (
-	"flag"
 	"fmt"
 	"net/rpc"
 	"strconv"
@@ -21,7 +20,7 @@ type distributorChannels struct {
 	keyPresses <-chan rune
 }
 
-var server = flag.String("server", "localhost:8030", "IP:port string to connect to as server")
+var server = "127.0.0.1:8030" //flag.String("server", "localhost:8030", "IP:port string to connect to as server")
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
@@ -41,44 +40,31 @@ func distributor(p Params, c distributorChannels) {
 	for row := 0; row < p.ImageHeight; row++ {
 		for col := 0; col < p.ImageWidth; col++ {
 			world[row][col] = <-c.ioInput
-			calcCellFlipped(c, p, world, blankWorld, 0, row, col) //Shouldnt call this each time really
+			calcCellFlipped(c, p, world, blankWorld, 0, row, col) //Shouldn't call this each time really
 		}
 	}
 
-	dy := p.ImageHeight / p.Threads
+	//dy := p.ImageHeight / p.Threads
 
-	//CODE COMMENTED FOR LATER USE.
-	// var clients [32] *rpc.Client
-	// for i := 0; i < p.Threads; i++ {
-	// 	//Need to change ip probably.
-	// 	server := flag.String("server","127.0.0.1:8030","IP:port string to connect to as server")
-	// 	client, _ := rpc.Dial("tcp", *server)
-	// 	clients[i] = client //SHOULD I HAVE POINTER HERE?
-	// }
-
-	client, _ := rpc.Dial("tcp", *server)
+	client, _ := rpc.Dial("tcp", "127.0.0.1:8030")
 	turn := 0
-	var result [][]byte
-
-	//Execute games of life.
-
-	for i := 0; i < p.Turns; i++ {
-		for j := 0; j < p.Threads; j++ {
-			if j == p.Threads-1 {
-				//newWorld will need to be a list when we have multiple threads returning.
-				result = nextStateCall(client, p, dy*j, p.ImageHeight, world, turn)
-			} else { //For now just doing single threaded.
-				//nextStateCall(client, p, dy*j, p.ImageHeight, world, turn)
-			}
+	request := stubs.GOLRequest{P: stubs.Params(p), Start: 0, End: p.ImageHeight, World: world}
+	response := new(stubs.GOLResponse)
+	//RPC call to calculate game of life.
+	ticker := time.NewTicker(2 * time.Second)
+	go tickTock(client, c)
+	a := client.Go(stubs.CalculateGOL, request, response, nil)
+label:
+	for {
+		select {
+		case <-ticker.C:
+			tickTock(client, c)
+		case <-a.Done:
+			break label
 		}
-		var newWorld [][]byte
-		for j := 0; j < p.Threads; j++ {
-			newWorld = append(newWorld, result...)
-		}
-		world = newWorld
-		c.events <- TurnComplete{turn}
-		turn++
 	}
+
+	world = response.Result
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 
@@ -87,7 +73,7 @@ func distributor(p Params, c distributorChannels) {
 		Alive:          calculateAliveCells(p, world),
 	}
 
-	imageOutput(p, c, world, turn)
+	imageOutput(p, c, world, p.Turns) //Note the change from turn to p.Turns
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
@@ -98,12 +84,25 @@ func distributor(p Params, c distributorChannels) {
 	close(c.events)
 }
 
-func nextStateCall(client *rpc.Client, p Params, start int, end int, world [][]byte, turn int) [][]byte {
-	request := stubs.Request{P: stubs.Params(p), Start: start, End: end, World: world, Turn: turn}
-	response := new(stubs.Response)
-	client.Call(stubs.CalculateNextState, request, response)
-	return response.Result
+func createBlankState(p Params) [][]byte {
+	blankWorld := make([][]byte, p.ImageHeight)
+	for i := range blankWorld {
+		blankWorld[i] = make([]byte, p.ImageWidth)
+	}
+	return blankWorld
 }
+
+func tickTock(client *rpc.Client, c distributorChannels) {
+	request := stubs.NilRequest{}
+	response := new(stubs.AliveCellResponse)
+	client.Call(stubs.CalculateAliveCells, request, response)
+	c.events <- AliveCellsCount{
+		CompletedTurns: response.Turn,
+		CellsCount:     response.Alive,
+	}
+}
+
+//-------------------------------------------------------------------------//
 
 func imageOutput(p Params, c distributorChannels, world [][]byte, turn int) {
 
@@ -115,56 +114,6 @@ func imageOutput(p Params, c distributorChannels, world [][]byte, turn int) {
 			c.ioOutput <- world[row][col]
 		}
 	}
-}
-
-func calculateNextState(start int, end int, p Params, world [][]byte, c distributorChannels, turn int, channel chan [][]byte) {
-	newWorld := createBlankState(p) //Giving this blank world as a param would make the function more efficient.
-	result := make([][]byte, end-start)
-	for i := 0; i < end-start; i++ {
-		result[i] = make([]byte, p.ImageWidth)
-	}
-	for i := start; i < end; i++ {
-		for j := 0; j < p.ImageWidth; j++ {
-			aliveNeighbours := 0
-			//Loop through adjacent cells.
-			for a := -1; a <= 1; a++ {
-				for b := -1; b <= 1; b++ {
-					if world[(p.ImageHeight+i+a)%p.ImageHeight][(p.ImageWidth+j+b)%p.ImageWidth] == 255 {
-						if !(a == 0 && b == 0) {
-							aliveNeighbours++
-						}
-					}
-
-				}
-			}
-			if world[i][j] == 255 && aliveNeighbours < 2 {
-				newWorld[i][j] = 0
-			} else if world[i][j] == 255 && (aliveNeighbours == 2 || aliveNeighbours == 3) {
-				newWorld[i][j] = world[i][j]
-			} else if world[i][j] == 255 && aliveNeighbours > 3 {
-				newWorld[i][j] = 0
-			} else if world[i][j] == 0 && aliveNeighbours == 3 {
-				newWorld[i][j] = 255
-			} else {
-				newWorld[i][j] = world[i][j]
-			}
-
-			calcCellFlipped(c, p, world, newWorld, turn, i, j)
-
-			result[i-start][j] = newWorld[i][j]
-		}
-	}
-	//postWorld(newWorld)
-	//fmt.Println("yo  ", result)
-	channel <- result //NEED TO ONLY RETURN THE RIGHT PARTS
-}
-
-func createBlankState(p Params) [][]byte {
-	blankWorld := make([][]byte, p.ImageHeight)
-	for i := range blankWorld {
-		blankWorld[i] = make([]byte, p.ImageWidth)
-	}
-	return blankWorld
 }
 
 func calcCellFlipped(c distributorChannels, p Params, world [][]byte, newWorld [][]byte, turn int, i int, j int) {
@@ -212,23 +161,42 @@ func keyInput(p Params, c distributorChannels, worldChannel chan [][]byte, turnC
 	}
 }
 
-func tickTock(worldChannel chan [][]byte, turnChannel chan int, p Params, c distributorChannels) {
-	for {
-		time.Sleep(2 * time.Second)
-		alive := 0
-		world := <-worldChannel
-		turn := <-turnChannel
-		for i := 0; i < p.ImageHeight; i++ {
-			for j := 0; j < p.ImageWidth; j++ {
-				if world[i][j] == 0xFF {
-					alive++
+func calculateNextState(start int, end int, p Params, world [][]byte, c distributorChannels, turn int, channel chan [][]byte) {
+	newWorld := createBlankState(p) //Giving this blank world as a param would make the function more efficient.
+	result := make([][]byte, end-start)
+	for i := 0; i < end-start; i++ {
+		result[i] = make([]byte, p.ImageWidth)
+	}
+	for i := start; i < end; i++ {
+		for j := 0; j < p.ImageWidth; j++ {
+			aliveNeighbours := 0
+			//Loop through adjacent cells.
+			for a := -1; a <= 1; a++ {
+				for b := -1; b <= 1; b++ {
+					if world[(p.ImageHeight+i+a)%p.ImageHeight][(p.ImageWidth+j+b)%p.ImageWidth] == 255 {
+						if !(a == 0 && b == 0) {
+							aliveNeighbours++
+						}
+					}
+
 				}
 			}
-		}
-		c.events <- AliveCellsCount{
-			CompletedTurns: turn,
-			CellsCount:     alive,
+			if world[i][j] == 255 && aliveNeighbours < 2 {
+				newWorld[i][j] = 0
+			} else if world[i][j] == 255 && (aliveNeighbours == 2 || aliveNeighbours == 3) {
+				newWorld[i][j] = world[i][j]
+			} else if world[i][j] == 255 && aliveNeighbours > 3 {
+				newWorld[i][j] = 0
+			} else if world[i][j] == 0 && aliveNeighbours == 3 {
+				newWorld[i][j] = 255
+			} else {
+				newWorld[i][j] = world[i][j]
+			}
+
+			calcCellFlipped(c, p, world, newWorld, turn, i, j)
+
+			result[i-start][j] = newWorld[i][j]
 		}
 	}
-
+	channel <- result //NEED TO ONLY RETURN THE RIGHT PARTS
 }

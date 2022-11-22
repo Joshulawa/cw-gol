@@ -1,18 +1,26 @@
 package stubs
 
-var CalculateNextState = "golLogicOperations.CalculateNextState"
+var CalculateGOL = "GolLogicOperations.CalculateGOL"
+var CalculateAliveCells = "GolLogicOperations.CalculateAliveCells"
 
-type Response struct {
+type GOLResponse struct {
 	Result [][]byte
 }
 
-type Request struct {
+type GOLRequest struct {
 	P     Params
 	Start int
 	End   int
 	World [][]byte
+	//Turn  int
+}
+
+type AliveCellResponse struct {
+	Alive int
 	Turn  int
 }
+
+type NilRequest struct{} //Empty request.
 
 type Params struct {
 	Turns       int
