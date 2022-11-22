@@ -5,6 +5,7 @@ var CalculateAliveCells = "GolLogicOperations.CalculateAliveCells"
 
 type GOLResponse struct {
 	Result [][]byte
+	Turn   int
 }
 
 type GOLRequest struct {
@@ -16,7 +17,7 @@ type GOLRequest struct {
 }
 
 type AliveCellResponse struct {
-	Alive int
+	World [][]byte
 	Turn  int
 }
 

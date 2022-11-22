@@ -10,31 +10,31 @@ import (
 
 type GolLogicOperations struct{}
 
-var alive int
-var turn = 0
+var globe [][]byte
+var turn int
 
 func (g *GolLogicOperations) CalculateGOL(req stubs.GOLRequest, res *stubs.GOLResponse) (err error) {
 	world := req.World
-	for ; turn < req.P.Turns; turn++ {
+	globe = world
+	for i := 0; i < req.P.Turns; i++ {
+		turn = i
 		world = calculateNextState(req.P, world, 0, req.P.ImageHeight)
-	}
-	res.Result = world
-	//turn = 0 //Just to be safe...
-	return
-}
+		globe = world
 
-func (g *GolLogicOperations) CalculateAliveCells(req stubs.NilRequest, res *stubs.AliveCellResponse) (err error) {
-	res.Alive = alive
+	}
+	//fmt.Println(world)
+	res.Result = world
 	res.Turn = turn
 	return
 }
 
-func calculateNextState(p stubs.Params, world [][]byte, start int, end int) [][]byte {
-	//result := make([][]byte, end-start)
+func (g *GolLogicOperations) CalculateAliveCells(req stubs.NilRequest, res *stubs.AliveCellResponse) (err error) {
+	res.World = globe
+	res.Turn = turn //+ 1
+	return
+}
 
-	//for i := 0; i < end-start; i++ {
-	//	result[i] = make([]byte, p.ImageWidth)
-	//}
+func calculateNextState(p stubs.Params, world [][]byte, start int, end int) [][]byte {
 
 	newWorld := createBlankState(p)
 	for i := start; i < end; i++ {
@@ -72,7 +72,6 @@ func calculateNextState(p stubs.Params, world [][]byte, start int, end int) [][]
 	//world = newWorld
 	//c.events <- TurnComplete{turn}
 	//turn++
-	alive = countAliveCells(p, world)
 	return newWorld
 }
 
