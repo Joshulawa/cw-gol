@@ -1,7 +1,8 @@
 package stubs
 
 var CalculateGOL = "GolLogicOperations.CalculateGOL"
-var CalculateAliveCells = "GolLogicOperations.CalculateAliveCells"
+var CurrentState = "GolLogicOperations.CurrentState"
+var CloseServer = "GolLogicOperations.CloseServer"
 
 type GOLResponse struct {
 	Result [][]byte
@@ -16,7 +17,7 @@ type GOLRequest struct {
 	//Turn  int
 }
 
-type AliveCellResponse struct {
+type StateResponse struct {
 	World [][]byte
 	Turn  int
 }

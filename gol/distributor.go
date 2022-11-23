@@ -21,7 +21,8 @@ type distributorChannels struct {
 }
 
 var server = "127.0.0.1:8030" //flag.String("server", "localhost:8030", "IP:port string to connect to as server")
-var exit = false
+var globe [][]byte
+var gturn int
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
@@ -45,37 +46,58 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
-	//dy := p.ImageHeight / p.Threads
-
 	client, _ := rpc.Dial("tcp", "127.0.0.1:8030")
 	request := stubs.GOLRequest{P: stubs.Params(p), Start: 0, End: p.ImageHeight, World: world}
 	response := new(stubs.GOLResponse)
 	//RPC call to calculate game of life.
-	go tickTock(p, client, c)
-	err := client.Call(stubs.CalculateGOL, request, response)
-	if err != nil {
-		fmt.Println(err)
-		return
+	GOL := client.Go(stubs.CalculateGOL, request, response, nil)
+	ticker := time.NewTicker(2 * time.Second)
+	GOLdone := 0
+
+	//I SHOULD JUST MAKE A FUNCTION THAT UPDATES THE STATE AND USE IT FOR ALL FUNCTIONS SO I CAN HAVE A
+	//UNIFORM TURN AND WORLD VARIABLE.
+	for {
+		select {
+		case <-ticker.C:
+			tickTock(p, client, c)
+		case <-GOL.Done:
+			GOLdone = 1
+		case key := <-c.keyPresses:
+			keyInput(p, c, key, client)
+			if key == 'q' {
+				GOLdone = -1 //Force quit, no final events.
+				fmt.Println("AAH!")
+				break
+			} else if key == 'k' {
+				GOLdone = 1 //Normal quit, produce final image.
+			}
+		}
+		if GOLdone == 1 || GOLdone == -1 {
+			fmt.Println("done")
+			break
+		}
 	}
-	fmt.Println("hi")
-	world = response.Result
 
-	// TODO: Report the final state using FinalTurnCompleteEvent.
-
-	c.events <- FinalTurnComplete{
-		CompletedTurns: p.Turns, //THINK ABOUT THESE TURNS.
-		Alive:          calculateAliveCells(p, world),
+	if GOLdone == 1 {
+		fmt.Println(response.Turn)
+		world = response.Result
+		if len(world) != 0 {
+			globe = world
+			gturn = response.Turn
+		}
+		fmt.Println(len(globe))
+		imageOutput(p, c, globe, gturn) //Note the change from turn to p.Turns
+		c.events <- FinalTurnComplete{
+			CompletedTurns: gturn, //THINK ABOUT THESE TURNS.
+			Alive:          calculateAliveCells(p, globe),
+		}
 	}
-
-	imageOutput(p, c, world, p.Turns) //Note the change from turn to p.Turns
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
-	c.events <- StateChange{p.Turns, Quitting}
-
+	c.events <- StateChange{gturn, Quitting}
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
-	exit = true
 	close(c.events)
 }
 
@@ -87,39 +109,40 @@ func createBlankState(p Params) [][]byte {
 	return blankWorld
 }
 
-//
 func tickTock(p Params, client *rpc.Client, c distributorChannels) {
-	ticker := time.NewTicker(2 * time.Second)
-	for {
-		select {
-		case <-ticker.C:
-			time.Sleep(time.Second * 2)
-			request := stubs.NilRequest{}
-			response := new(stubs.AliveCellResponse)
-			err := client.Call(stubs.CalculateAliveCells, request, response)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			alive := len(calculateAliveCells(p, response.World))
-			if exit != true {
-				c.events <- AliveCellsCount{
-					CompletedTurns: response.Turn,
-					CellsCount:     alive,
-				}
-			}
+	request := stubs.NilRequest{}
+	response := new(stubs.StateResponse)
+	client.Call(stubs.CurrentState, request, response)
+	alive := len(calculateAliveCells(p, response.World))
 
-		}
-
+	c.events <- AliveCellsCount{
+		CompletedTurns: response.Turn,
+		CellsCount:     alive,
 	}
+}
 
+func keyInput(p Params, c distributorChannels, key rune, client *rpc.Client) {
+	request := stubs.NilRequest{}
+	response := new(stubs.StateResponse)
+	client.Call(stubs.CurrentState, request, response)
+	gturn = response.Turn
+	globe = response.World
+	if key == 's' {
+		fmt.Println("s pressed")
+		imageOutput(p, c, globe, gturn)
+	} else if key == 'q' {
+		fmt.Println("q pressed")
+		client.Close()
+	} else if key == 'k' {
+		fmt.Println("k pressed")
+		client.Call(stubs.CloseServer, stubs.NilRequest{}, stubs.NilRequest{})
+	}
 }
 
 func imageOutput(p Params, c distributorChannels, world [][]byte, turn int) {
-
 	c.ioFilename <- strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(turn)
 	c.ioCommand <- ioOutput
-
+	fmt.Println(turn, "   bing")
 	for row := 0; row < p.ImageHeight; row++ {
 		for col := 0; col < p.ImageWidth; col++ {
 			c.ioOutput <- world[row][col]
@@ -148,30 +171,6 @@ func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 		}
 	}
 	return alive
-}
-
-func keyInput(p Params, c distributorChannels, worldChannel chan [][]byte, turnChannel chan int, quit chan bool, pause chan bool) {
-
-	world := <-worldChannel
-	turn := <-turnChannel
-
-	for {
-		select {
-		case world = <-worldChannel:
-			turn = <-turnChannel
-		case key := <-c.keyPresses:
-			if key == 's' {
-				fmt.Println("s pressed")
-				imageOutput(p, c, world, turn)
-			} else if key == 'q' {
-				fmt.Println("q pressed")
-				quit <- true
-			} else if key == 'p' {
-				pause <- true
-			}
-		}
-
-	}
 }
 
 func calculateNextState(start int, end int, p Params, world [][]byte, c distributorChannels, turn int, channel chan [][]byte) {

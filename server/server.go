@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net"
 	"net/rpc"
 	//"uk.ac.bris.cs/gameoflife/gol"
@@ -12,6 +11,7 @@ type GolLogicOperations struct{}
 
 var globe [][]byte
 var turn int
+var listener net.Listener
 
 func (g *GolLogicOperations) CalculateGOL(req stubs.GOLRequest, res *stubs.GOLResponse) (err error) {
 	world := req.World
@@ -28,9 +28,14 @@ func (g *GolLogicOperations) CalculateGOL(req stubs.GOLRequest, res *stubs.GOLRe
 	return
 }
 
-func (g *GolLogicOperations) CalculateAliveCells(req stubs.NilRequest, res *stubs.AliveCellResponse) (err error) {
+func (g *GolLogicOperations) CurrentState(req stubs.NilRequest, res *stubs.StateResponse) (err error) {
 	res.World = globe
-	res.Turn = turn //+ 1
+	res.Turn = turn
+	return
+}
+
+func (g *GolLogicOperations) CloseServer(req stubs.NilRequest, res *stubs.NilRequest) (err error) {
+	listener.Close()
 	return
 }
 
@@ -99,12 +104,8 @@ func main() {
 	//pAddr := flag.String("port", "8030", "Port to listen on")
 
 	//flag.Parse()
-	err := rpc.Register(&GolLogicOperations{})
-	if err != nil {
-		fmt.Println("yoyoyo error")
-		return
-	}
-	listener, _ := net.Listen("tcp", "127.0.0.1:8030")
+	rpc.Register(&GolLogicOperations{})
+	listener, _ = net.Listen("tcp", "127.0.0.1:8030")
 	defer listener.Close()
 	rpc.Accept(listener)
 }
