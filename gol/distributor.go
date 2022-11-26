@@ -45,17 +45,14 @@ func distributor(p Params, c distributorChannels) {
 			calcCellFlipped(c, p, world, blankWorld, 0, row, col) //Shouldn't call this each time really
 		}
 	}
-
-	client, _ := rpc.Dial("tcp", "127.0.0.1:8030")
-	request := stubs.GOLRequest{P: stubs.Params(p), Start: 0, End: p.ImageHeight, World: world}
+	//fmt.Println(world)
+	client, _ := rpc.Dial("tcp", "127.0.0.1:8000")
+	request := stubs.StartGol{P: stubs.Params(p), World: world, Workers: p.Threads}
 	response := new(stubs.GOLResponse)
-	//RPC call to calculate game of life.
-	GOL := client.Go(stubs.CalculateGOL, request, response, nil)
+	GOL := client.Go(stubs.BrokerGol, request, response, nil)
 	ticker := time.NewTicker(2 * time.Second)
 	GOLdone := 0
 
-	//I SHOULD JUST MAKE A FUNCTION THAT UPDATES THE STATE AND USE IT FOR ALL FUNCTIONS SO I CAN HAVE A
-	//UNIFORM TURN AND WORLD VARIABLE.
 	for {
 		select {
 		case <-ticker.C:
@@ -68,9 +65,9 @@ func distributor(p Params, c distributorChannels) {
 				GOLdone = -1 //Force quit, no final events.
 				fmt.Println("AAH!")
 				break
-			} else if key == 'k' {
-				GOLdone = 1 //Normal quit, produce final image.
-			}
+			} //else if key == 'k' {
+			//	GOLdone = 1 //Normal quit, produce final image.
+			//}
 		}
 		if GOLdone == 1 || GOLdone == -1 {
 			fmt.Println("done")
@@ -78,20 +75,45 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
-	if GOLdone == 1 {
-		fmt.Println(response.Turn)
-		world = response.Result
-		if len(world) != 0 {
-			globe = world
-			gturn = response.Turn
-		}
-		fmt.Println(len(globe))
-		imageOutput(p, c, globe, gturn) //Note the change from turn to p.Turns
-		c.events <- FinalTurnComplete{
-			CompletedTurns: gturn, //THINK ABOUT THESE TURNS.
-			Alive:          calculateAliveCells(p, globe),
-		}
+	world = response.Result
+	imageOutput(p, c, response.Result, response.Turn) //Note the change from turn to p.Turns
+	c.events <- FinalTurnComplete{
+		CompletedTurns: p.Turns, //THINK ABOUT THESE TURNS.
+		Alive:          calculateAliveCells(p, world),
 	}
+
+	//I SHOULD JUST MAKE A FUNCTION THAT UPDATES THE STATE AND USE IT FOR ALL FUNCTIONS SO I CAN HAVE A
+	//UNIFORM TURN AND WORLD VARIABLE.
+	//for {
+	//	select {
+	//	case <-ticker.C:
+	//		tickTock(p, client, c)
+	//	case <-GOL.Done:
+	//		GOLdone = 1
+	//	case key := <-c.keyPresses:
+	//		keyInput(p, c, key, client)
+	//		if key == 'q' {
+	//			GOLdone = -1 //Force quit, no final events.
+	//			fmt.Println("AAH!")
+	//			break
+	//		} else if key == 'k' {
+	//			GOLdone = 1 //Normal quit, produce final image.
+	//		}
+	//	}
+	//	if GOLdone == 1 || GOLdone == -1 {
+	//		fmt.Println("done")
+	//		break
+	//	}
+	//}
+	//
+	//if GOLdone == 1 {
+	//	fmt.Println(response.Turn)
+	//	world = response.Result
+	//	if len(world) != 0 {
+	//		globe = world
+	//		gturn = response.Turn
+	//	}
+	//	fmt.Println(len(globe))
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
@@ -109,10 +131,12 @@ func createBlankState(p Params) [][]byte {
 	return blankWorld
 }
 
+//Call to broker which will give the most recent world?
 func tickTock(p Params, client *rpc.Client, c distributorChannels) {
 	request := stubs.NilRequest{}
 	response := new(stubs.StateResponse)
-	client.Call(stubs.CurrentState, request, response)
+	client.Call(stubs.BrokerState, request, response)
+	fmt.Println(len(response.World))
 	alive := len(calculateAliveCells(p, response.World))
 
 	c.events <- AliveCellsCount{

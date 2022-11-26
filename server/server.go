@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"net"
 	"net/rpc"
 	//"uk.ac.bris.cs/gameoflife/gol"
@@ -16,13 +18,9 @@ var listener net.Listener
 func (g *GolLogicOperations) CalculateGOL(req stubs.GOLRequest, res *stubs.GOLResponse) (err error) {
 	world := req.World
 	globe = world
-	for i := 0; i < req.P.Turns; i++ {
-		turn = i
-		world = calculateNextState(req.P, world, 0, req.P.ImageHeight)
-		globe = world
-
-	}
-	//fmt.Println(world)
+	fmt.Println("world before next state : ", len(world))
+	world = calculateNextState(req.P, world, req.Start, req.End)
+	fmt.Println("world after next state : ", len(world))
 	res.Result = world
 	res.Turn = turn
 	return
@@ -40,8 +38,12 @@ func (g *GolLogicOperations) CloseServer(req stubs.NilRequest, res *stubs.NilReq
 }
 
 func calculateNextState(p stubs.Params, world [][]byte, start int, end int) [][]byte {
-
 	newWorld := createBlankState(p)
+	result := make([][]byte, end-start)
+	for i := 0; i < end-start; i++ {
+		result[i] = make([]byte, p.ImageWidth)
+	}
+	fmt.Println(end)
 	for i := start; i < end; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
 			aliveNeighbours := 0
@@ -67,7 +69,7 @@ func calculateNextState(p stubs.Params, world [][]byte, start int, end int) [][]
 			} else {
 				newWorld[i][j] = world[i][j]
 			}
-
+			result[i-start][j] = newWorld[i][j]
 		}
 	}
 	//var newWorld [][]byte
@@ -77,7 +79,7 @@ func calculateNextState(p stubs.Params, world [][]byte, start int, end int) [][]
 	//world = newWorld
 	//c.events <- TurnComplete{turn}
 	//turn++
-	return newWorld
+	return result
 }
 
 func createBlankState(p stubs.Params) [][]byte {
@@ -101,11 +103,10 @@ func countAliveCells(p stubs.Params, world [][]byte) int {
 }
 
 func main() {
-	//pAddr := flag.String("port", "8030", "Port to listen on")
-
-	//flag.Parse()
+	pAddr := flag.String("port", "8030", "Port to listen on")
+	flag.Parse()
 	rpc.Register(&GolLogicOperations{})
-	listener, _ = net.Listen("tcp", "127.0.0.1:8030")
+	listener, _ = net.Listen("tcp", "127.0.0.1:"+*pAddr)
 	defer listener.Close()
 	rpc.Accept(listener)
 }
