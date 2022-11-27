@@ -103,7 +103,7 @@ func countAliveCells(p stubs.Params, world [][]byte) int {
 }
 
 func main() {
-	pAddr := flag.String("port", "8030", "Port to listen on")
+	//pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rpc.Register(&GolLogicOperations{})
 	listener, _ = net.Listen("tcp", "54.152.218.175:8030") //"127.0.0.1:"+*pAddr)
