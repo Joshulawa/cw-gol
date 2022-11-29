@@ -102,6 +102,7 @@ func main() {
 	rpc.Register(&GolLogicOperations{})
 	//listener, _ = net.Listen("tcp", "127.0.0.1:"+*pAddr)
 	listener, _ = net.Listen("tcp", *ip+":"+*pAddr)
+	fmt.Println(*ip + ":" + *pAddr)
 	defer listener.Close()
 	rpc.Accept(listener)
 }
