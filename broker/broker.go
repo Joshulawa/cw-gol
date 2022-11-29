@@ -91,7 +91,7 @@ func callGol(numbWorkers int, workers []*rpc.Client, p stubs.Params, world [][]b
 func createWorkers(numbWorkers int) []*rpc.Client {
 	workers := make([]*rpc.Client, numbWorkers) //Create list of clients.
 	for i := range workers {
-		workers[i], _ = rpc.Dial("tcp", "54.152.218.175:8030") //"127.0.0.1:"+strconv.Itoa(8010+i*10))
+		workers[i], _ = rpc.Dial("tcp", "18.212.255.211:8030") //"127.0.0.1:"+strconv.Itoa(8010+i*10))
 		fmt.Println("127.0.0.1:" + strconv.Itoa(8010+i*10))
 	}
 	return workers
