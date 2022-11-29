@@ -82,39 +82,6 @@ func distributor(p Params, c distributorChannels) {
 		Alive:          calculateAliveCells(p, world),
 	}
 
-	//I SHOULD JUST MAKE A FUNCTION THAT UPDATES THE STATE AND USE IT FOR ALL FUNCTIONS SO I CAN HAVE A
-	//UNIFORM TURN AND WORLD VARIABLE.
-	//for {
-	//	select {
-	//	case <-ticker.C:
-	//		tickTock(p, client, c)
-	//	case <-GOL.Done:
-	//		GOLdone = 1
-	//	case key := <-c.keyPresses:
-	//		keyInput(p, c, key, client)
-	//		if key == 'q' {
-	//			GOLdone = -1 //Force quit, no final events.
-	//			fmt.Println("AAH!")
-	//			break
-	//		} else if key == 'k' {
-	//			GOLdone = 1 //Normal quit, produce final image.
-	//		}
-	//	}
-	//	if GOLdone == 1 || GOLdone == -1 {
-	//		fmt.Println("done")
-	//		break
-	//	}
-	//}
-	//
-	//if GOLdone == 1 {
-	//	fmt.Println(response.Turn)
-	//	world = response.Result
-	//	if len(world) != 0 {
-	//		globe = world
-	//		gturn = response.Turn
-	//	}
-	//	fmt.Println(len(globe))
-
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
 	<-c.ioIdle
@@ -136,7 +103,6 @@ func tickTock(p Params, client *rpc.Client, c distributorChannels) {
 	request := stubs.NilRequest{}
 	response := new(stubs.StateResponse)
 	client.Call(stubs.BrokerState, request, response)
-	fmt.Println(len(response.World))
 	alive := len(calculateAliveCells(p, response.World))
 
 	c.events <- AliveCellsCount{

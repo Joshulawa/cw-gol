@@ -32,9 +32,8 @@ func distribute(p stubs.Params, world [][]byte, numbWorkers int) [][]byte {
 	//Should map workers to an id, deleting workers dynamically means using the
 	//index of a worker in the workers list as their id isn't valid.
 	//Or is this not a big issue...
-	fmt.Println(len(world))
 	globe = world
-	fmt.Println("hello")
+	fmt.Println("In distribute.")
 	workers := createWorkers(numbWorkers)
 	dy = calculateSplit(numbWorkers, p) //Global variable dy
 	turn := 0
@@ -58,19 +57,20 @@ func distribute(p stubs.Params, world [][]byte, numbWorkers int) [][]byte {
 }
 
 func (b *Broker) CurrentState(req stubs.NilRequest, res *stubs.StateResponse) (err error) {
-	fmt.Println(len(globe))
 	res.World = globe
 	res.Turn = gturn
 	return
 }
 
 func callGol(numbWorkers int, workers []*rpc.Client, p stubs.Params, world [][]byte) []*stubs.GOLResponse {
+	//fmt.Println("Connecting workings to server.")
 	responses := make([]*stubs.GOLResponse, numbWorkers)
 	results := make([]*rpc.Call, numbWorkers)
 	for i := range responses {
 		responses[i] = new(stubs.GOLResponse)
 	}
 	//RPC calls prepared and made in this loop. Responses stored in a list.
+	fmt.Println("Workers : ", len(workers), "  Threads : ", p.Threads)
 	for i, worker := range workers {
 		var request stubs.GOLRequest
 		if i == len(workers)-1 {
@@ -89,9 +89,12 @@ func callGol(numbWorkers int, workers []*rpc.Client, p stubs.Params, world [][]b
 }
 
 func createWorkers(numbWorkers int) []*rpc.Client {
+	fmt.Println("Creating workers.")
 	workers := make([]*rpc.Client, numbWorkers) //Create list of clients.
 	for i := range workers {
-		workers[i], _ = rpc.Dial("tcp", "52.90.231.67:8010") //"127.0.0.1:"+strconv.Itoa(8010+i*10))
+		fmt.Println("hiya")
+		workers[i], _ = rpc.Dial("tcp", "172.31.31.95:8020") //"127.0.0.1:"+strconv.Itoa(8010+i*10))
+		fmt.Println("hello?")
 		fmt.Println("127.0.0.1:" + strconv.Itoa(8010+i*10))
 	}
 	return workers

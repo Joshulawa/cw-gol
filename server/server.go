@@ -103,6 +103,11 @@ func main() {
 	//listener, _ = net.Listen("tcp", "127.0.0.1:"+*pAddr)
 	listener, _ = net.Listen("tcp", *ip+":"+*pAddr)
 	fmt.Println(*ip + ":" + *pAddr)
-	defer listener.Close()
+	defer func(listener net.Listener) {
+		err := listener.Close()
+		if err != nil {
+			
+		}
+	}(listener)
 	rpc.Accept(listener)
 }
