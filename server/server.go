@@ -107,12 +107,13 @@ func main() {
 	flag.Parse()
 	rpc.Register(&GolLogicOperations{})
 	listener, _ = net.Listen("tcp", "52.90.231.67:8030") //"127.0.0.1:"+*pAddr)
-	defer func(listener net.Listener) {
-		err := listener.Close()
-		if err != nil {
-			fmt.Println(err)
-		}
-	}(listener)
+	fmt.Println(listener)
+	//defer func(listener net.Listener) {
+	//	err := listener.Close()
+	//	if err != nil {
+	//		fmt.Println(err)
+	//	}
+	//}(listener)
 	rpc.Accept(listener)
 }
 
