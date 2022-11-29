@@ -72,13 +72,6 @@ func calculateNextState(p stubs.Params, world [][]byte, start int, end int) [][]
 			result[i-start][j] = newWorld[i][j]
 		}
 	}
-	//var newWorld [][]byte
-	//for j := 0; j < p.Threads; j++ {
-	//	newWorld = append(newWorld, result...)
-	//}
-	//world = newWorld
-	//c.events <- TurnComplete{turn}
-	//turn++
 	return result
 }
 
@@ -103,45 +96,12 @@ func countAliveCells(p stubs.Params, world [][]byte) int {
 }
 
 func main() {
-	//pAddr := flag.String("port", "8030", "Port to listen on")
+	ip := flag.String("ip", "127.0.0.1", "Ip to connect to")
+	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rpc.Register(&GolLogicOperations{})
-	listener, _ = net.Listen("tcp", "52.90.231.67:8030") //"127.0.0.1:"+*pAddr)
-	fmt.Println(listener)
-	//defer func(listener net.Listener) {
-	//	err := listener.Close()
-	//	if err != nil {
-	//		fmt.Println(err)
-	//	}
-	//}(listener)
+	//listener, _ = net.Listen("tcp", "127.0.0.1:"+*pAddr)
+	listener, _ = net.Listen("tcp", *ip+":"+*pAddr)
+	defer listener.Close()
 	rpc.Accept(listener)
 }
-
-//for i := start; i < end; i++ {
-//for j := 0; j < p.ImageWidth; j++ {
-//aliveNeighbours := 0
-////Loop through adjacent cells.
-//for a := -1; a <= 1; a++ {
-//for b := -1; b <= 1; b++ {
-//if world[(p.ImageHeight+i+a)%p.ImageHeight][(p.ImageWidth+j+b)%p.ImageWidth] == 255 {
-//if !(a == 0 && b == 0) {
-//aliveNeighbours++
-//}
-//}
-//
-//}
-//}
-//if world[i][j] == 255 && aliveNeighbours < 2 {
-//newWorld[i][j] = 0
-//} else if world[i][j] == 255 && (aliveNeighbours == 2 || aliveNeighbours == 3) {
-//newWorld[i][j] = world[i][j]
-//} else if world[i][j] == 255 && aliveNeighbours > 3 {
-//newWorld[i][j] = 0
-//} else if world[i][j] == 0 && aliveNeighbours == 3 {
-//newWorld[i][j] = 255
-//} else {
-//newWorld[i][j] = world[i][j]
-//}
-//
-//result[i-start][j] = newWorld[i][j]
-//}
