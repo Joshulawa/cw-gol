@@ -6,6 +6,7 @@ import (
 	"net/rpc"
 	"strconv"
 	"uk.ac.bris.cs/gameoflife/stubs"
+	"uk.ac.bris.cs/gameoflife/util"
 )
 
 var gturn int
@@ -22,6 +23,7 @@ type Broker struct{}
 func (b *Broker) BrokerGol(req stubs.StartGol, res *stubs.GOLResponse) (err error) {
 	fmt.Println("Distributor connected")
 	res.Result = distribute(req.P, req.World, req.P.Threads)
+	fmt.Println("HIII + ", res.Result)
 	res.Turn = gturn
 	//res.Result = req.World
 	//Need to return number of turns completed at some point as well.
@@ -29,60 +31,85 @@ func (b *Broker) BrokerGol(req stubs.StartGol, res *stubs.GOLResponse) (err erro
 }
 
 func distribute(p stubs.Params, world [][]byte, numbWorkers int) [][]byte {
-	//Should map workers to an id, deleting workers dynamically means using the
-	//index of a worker in the workers list as their id isn't valid.
-	//Or is this not a big issue...
-	fmt.Println(len(world))
 	globe = world
-	fmt.Println("hello")
-	workers := createWorkers(numbWorkers)
+	fmt.Println("inside distribute")
+	workers := createWorkers(numbWorkers) //Creates and connects clients to servers.
+	//Pass world to all servers to setupGol.
+	for _, worker := range workers {
+		request := stubs.StateResponse{
+			World: world,
+			Turn:  0,
+		}
+		worker.Call(stubs.SetupGol, request, new(stubs.NilRequest))
+	}
+
 	dy = calculateSplit(numbWorkers, p) //Global variable dy
 	turn := 0
-	for i := 0; i < p.Turns; i++ { //change back to turn
-		turn++
-		responses := callGol(numbWorkers, workers, p, world)
-		var newWorld [][]byte
-		for j := 0; j < numbWorkers; j++ {
-			newWorld = append(newWorld, responses[j].Result...) //Think something might be wrong here.
-			//OH YEAH NEED TO CHANGE GOL LOGIC IN SERVER TO RETURN ONLY THE RIGHT SIZE SLICE
-		}
-		world = newWorld
-		globe = world
-		gturn = turn
-
-		//fmt.Println("wassup dog")
-		//Need to include event stuff. ie turn complete.
-		//Turn complete stuff would have to be an rpc call to distributor?
+	if p.ImageWidth == 16 {
+		util.VisualiseMatrix(world, p.ImageWidth, p.ImageHeight)
 	}
+
+	responses := make([]*stubs.GOLResponse, numbWorkers)
+	halos := make([][]byte, numbWorkers*2) //When only one worker, numbers has length 2  and is being accessed by algorithm at point 2.
+	for i := 0; i < numbWorkers*2; i++ {
+		halos[i] = make([]byte, p.ImageWidth)
+	}
+	for a := 0; a < p.Turns; a++ {
+
+		turn++
+		//send halos instead of world
+		responses = haloGol(workers, p, halos)
+		var newHalos [][]byte
+		for j := range responses {
+			newHalos = append(newHalos, responses[j].Result...)
+
+		}
+		if p.Turns == 1 && p.ImageHeight == 16 {
+			fmt.Println(newHalos)
+		}
+		halos = newHalos
+	}
+	if p.Turns == 0 {
+		return globe
+	}
+	//fmt.Println(world, "     YYOYO")
+	world = getResults(workers)
 	return world
 }
 
+func getResults(workers []*rpc.Client) [][]byte {
+	var newWorld [][]byte
+	for _, worker := range workers {
+		response := new(stubs.StateResponse)
+		worker.Call(stubs.CurrentState, stubs.NilRequest{}, response)
+		newWorld = append(newWorld, response.WorldSplit...)
+	}
+	return newWorld
+}
+
 func (b *Broker) CurrentState(req stubs.NilRequest, res *stubs.StateResponse) (err error) {
-	fmt.Println(len(globe))
 	res.World = globe
 	res.Turn = gturn
 	return
 }
 
-func callGol(numbWorkers int, workers []*rpc.Client, p stubs.Params, world [][]byte) []*stubs.GOLResponse {
-	responses := make([]*stubs.GOLResponse, numbWorkers)
-	results := make([]*rpc.Call, numbWorkers)
+func haloGol(workers []*rpc.Client, p stubs.Params, halos [][]byte) []*stubs.GOLResponse {
+	responses := make([]*stubs.GOLResponse, len(workers))
+	results := make([]*rpc.Call, len(workers))
 	for i := range responses {
 		responses[i] = new(stubs.GOLResponse)
 	}
-	//RPC calls prepared and made in this loop. Responses stored in a list.
 	for i, worker := range workers {
 		var request stubs.GOLRequest
 		if i == len(workers)-1 {
-			request = stubs.GOLRequest{p, dy * i, p.ImageHeight, world}
+			request = stubs.GOLRequest{p, dy * i, p.ImageHeight, halos}
 		} else {
-			request = stubs.GOLRequest{p, dy * i, dy * (i + 1), world}
+			request = stubs.GOLRequest{p, dy * i, dy * (i + 1), halos}
 		}
+		//Each server will return [][]byte of just their halos.
 		results[i] = worker.Go(stubs.CalculateGOL, request, responses[i], nil)
 	}
-
-	//Not pausing long enough for worker.Go to respond?
-	for i := 0; i < numbWorkers; i++ {
+	for i := 0; i < len(workers); i++ {
 		<-results[i].Done
 	}
 	return responses
@@ -91,7 +118,7 @@ func callGol(numbWorkers int, workers []*rpc.Client, p stubs.Params, world [][]b
 func createWorkers(numbWorkers int) []*rpc.Client {
 	workers := make([]*rpc.Client, numbWorkers) //Create list of clients.
 	for i := range workers {
-		workers[i], _ = rpc.Dial("tcp", "54.152.218.175:8030") //"127.0.0.1:"+strconv.Itoa(8010+i*10))
+		workers[i], _ = rpc.Dial("tcp", "127.0.0.1:"+strconv.Itoa(8010+i*10))
 		fmt.Println("127.0.0.1:" + strconv.Itoa(8010+i*10))
 	}
 	return workers

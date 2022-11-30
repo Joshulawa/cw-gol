@@ -3,6 +3,7 @@ package stubs
 var CalculateGOL = "GolLogicOperations.CalculateGOL"
 var CurrentState = "GolLogicOperations.CurrentState"
 var CloseServer = "GolLogicOperations.CloseServer"
+var SetupGol = "GolLogicOperations.SetupGol"
 
 var BrokerGol = "Broker.BrokerGol"
 var BrokerState = "Broker.CurrentState"
@@ -27,8 +28,9 @@ type GOLResponse struct {
 }
 
 type StateResponse struct {
-	World [][]byte
-	Turn  int
+	World      [][]byte
+	Turn       int
+	WorldSplit [][]byte
 }
 
 type NilRequest struct{} //Empty request.

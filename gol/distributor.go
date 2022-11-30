@@ -74,46 +74,18 @@ func distributor(p Params, c distributorChannels) {
 			break
 		}
 	}
-
+	//if p.ImageWidth == 16 {
+	//	util.VisualiseMatrix(world, p.ImageWidth, p.ImageHeight)
+	//	util.VisualiseMatrix(response.Result, p.ImageWidth, p.ImageHeight)
+	//}
+	fmt.Println(len(world))
 	world = response.Result
+
 	imageOutput(p, c, response.Result, response.Turn) //Note the change from turn to p.Turns
 	c.events <- FinalTurnComplete{
 		CompletedTurns: p.Turns, //THINK ABOUT THESE TURNS.
 		Alive:          calculateAliveCells(p, world),
 	}
-
-	//I SHOULD JUST MAKE A FUNCTION THAT UPDATES THE STATE AND USE IT FOR ALL FUNCTIONS SO I CAN HAVE A
-	//UNIFORM TURN AND WORLD VARIABLE.
-	//for {
-	//	select {
-	//	case <-ticker.C:
-	//		tickTock(p, client, c)
-	//	case <-GOL.Done:
-	//		GOLdone = 1
-	//	case key := <-c.keyPresses:
-	//		keyInput(p, c, key, client)
-	//		if key == 'q' {
-	//			GOLdone = -1 //Force quit, no final events.
-	//			fmt.Println("AAH!")
-	//			break
-	//		} else if key == 'k' {
-	//			GOLdone = 1 //Normal quit, produce final image.
-	//		}
-	//	}
-	//	if GOLdone == 1 || GOLdone == -1 {
-	//		fmt.Println("done")
-	//		break
-	//	}
-	//}
-	//
-	//if GOLdone == 1 {
-	//	fmt.Println(response.Turn)
-	//	world = response.Result
-	//	if len(world) != 0 {
-	//		globe = world
-	//		gturn = response.Turn
-	//	}
-	//	fmt.Println(len(globe))
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
@@ -166,10 +138,10 @@ func keyInput(p Params, c distributorChannels, key rune, client *rpc.Client) {
 func imageOutput(p Params, c distributorChannels, world [][]byte, turn int) {
 	c.ioFilename <- strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(turn)
 	c.ioCommand <- ioOutput
-	fmt.Println(turn, "   bing")
+	fmt.Println(len(world), "   bing")
 	for row := 0; row < p.ImageHeight; row++ {
 		for col := 0; col < p.ImageWidth; col++ {
-			c.ioOutput <- world[row][col]
+			c.ioOutput <- world[col][row]
 		}
 	}
 }
