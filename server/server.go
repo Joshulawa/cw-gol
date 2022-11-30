@@ -148,7 +148,7 @@ func main() {
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rpc.Register(&GolLogicOperations{})
-	listener, _ = net.Listen("tcp", *port+:+":"+ *pAddr)
+	listener, _ = net.Listen("tcp", *port+":"+ *pAddr)
 	fmt.Println("connected: ", ip* ":"+*pAddr)
 	defer listener.Close()
 	rpc.Accept(listener)
