@@ -149,7 +149,7 @@ func main() {
 	flag.Parse()
 	rpc.Register(&GolLogicOperations{})
 	listener, _ = net.Listen("tcp", *port+":"+ *pAddr)
-	fmt.Println("connected: ", ip* ":"+*pAddr)
+	fmt.Println("connected: ", *port+":"+*pAddr)
 	defer listener.Close()
 	rpc.Accept(listener)
 }
