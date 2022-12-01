@@ -40,7 +40,7 @@ func updateOnHalos(halos [][]byte, start int, end int, p stubs.Params) {
 	for j := 0; j < p.ImageWidth; j++ {
 		if workerId == 0 && p.Threads == 1 {
 			globe[p.ImageHeight-1][j] = halos[len(halos)-1][j] //Bottom row of split above.
-			globe[0][j] = halos[0][0]                          //Top of split below.
+			globe[0][j] = halos[0][j]                          //Top of split below.
 		} else if workerId == 0 {
 			globe[p.ImageHeight-1][j] = halos[len(halos)-1][j] //Bottom row of split above.
 			globe[end][j] = halos[2][j]                        //Top of split below.
