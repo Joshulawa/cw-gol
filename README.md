@@ -53,7 +53,8 @@ overhead and other inefficiencies, such as serially loading and
 producing the PGM files - included in the above timings,
 become more prevalent.
 
->>>INCL CHANNEL SOLUTION PHOTO.
+![image](https://github.com/Joshulawa/cw-gol/assets/98460811/83183008-f64a-4667-8466-01cade1e406e)
+
 
 ### Distributed System
 
@@ -68,6 +69,8 @@ to not follow a purely decreasing trend. The full effect of
 latency and other pitfalls of a distributed system become
 much more prevalent when we implemented our system with
 AWS nodes.
+
+![distributed implementation](https://github.com/Joshulawa/cw-gol/assets/98460811/905ae3ee-ecc2-4d31-872c-6329a70b0877)
 
 When operating our distributed system over several AWS
 nodes the impact of communication overhead becomes clear.
@@ -86,10 +89,13 @@ Some of these optimisations include:
 - Reduce information being sent between the broker and AWS nodes each turn.
 - Use multiple machines to take advantage of their hardware but have them connected on a local network or wired connection.
 
+![local vs aws](https://github.com/Joshulawa/cw-gol/assets/98460811/fd903a7b-ee31-41c4-8b2c-4d80d4ef691a)
+
 ### Halo Exchange
 
 Halo exchange optimised our AWS distributed system to a
 fraction of the runtime. There is a decrease in runtime between
+
 1 and 2 AWS worker nodes, which align with our expectations
 for a distributed implementation, suggesting that the amount of
 information sent between the nodes and the broker was greatly
@@ -100,6 +106,8 @@ made on the system or that using AWS nodes isn’t the most
 efficient way of implementing a version of GOL that requires
 great amounts of information sharing between concurrently
 working components.
+
+![halo exchange](https://github.com/Joshulawa/cw-gol/assets/98460811/9cd027eb-b055-4b8f-844f-b86fd66e18af)
 
 ### Conclusion
 
